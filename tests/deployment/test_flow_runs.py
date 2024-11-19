@@ -430,3 +430,31 @@ class TestRunDeployment:
                 )
             ]
         }
+
+    async def test_propagates_otel_context_to_child_flow_run(
+        self, test_deployment, use_hosted_api_server, prefect_client: "PrefectClient"
+    ):
+        deployment = test_deployment
+
+        @flow
+        async def parent_flow():
+            # Set some OTEL context in the parent flow's labels
+            flow_run = FlowRunContext.get().flow_run
+            flow_run.labels.update(
+                {"__OTEL_TRACE_ID": "test-trace-id", "__OTEL_SPAN_ID": "test-span-id"}
+            )
+
+            return await run_deployment(
+                f"foo/{deployment.name}",
+                timeout=0,
+                poll_interval=0,
+            )
+
+        parent_state = await parent_flow(return_state=True)
+        child_flow_run = await parent_state.result()
+
+        # Verify the child flow run has the OTEL context in its context dictionary
+        assert child_flow_run.context["__prefect"]["trace_context"] == {
+            "trace_id": "test-trace-id",
+            "span_id": "test-span-id",
+        }

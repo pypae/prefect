@@ -2056,3 +2056,43 @@ class TestFlowRunInstrumentation:
                 "exception.escaped": "False",
             },
         )
+
+    def test_run_deployment_propagates_trace_context(
+        self, instrumentation: InstrumentationTester, process_work_pool, tmp_path
+    ):
+        from prefect.deployments import run_deployment
+
+        @flow
+        def child_flow():
+            return "hello"
+
+        @flow
+        def parent_flow():
+            # Create a deployment for the child flow
+            child_flow.deploy(
+                name="test-deployment",
+                work_pool_name=process_work_pool.name,
+            )
+
+            return run_deployment(f"{child_flow.name}/test-deployment")
+
+        # Run the parent flow which will create and run the child flow
+        parent_flow()
+
+        # Get all spans created during the test
+        spans = instrumentation.get_finished_spans()
+        assert len(spans) == 2  # One span for parent flow, one for child flow
+
+        # Find the parent and child spans
+        parent_span = next(
+            s for s in spans if s.attributes["prefect.flow.name"] == "parent-flow"
+        )
+        child_span = next(
+            s for s in spans if s.attributes["prefect.flow.name"] == "child-flow"
+        )
+
+        # Verify the child span has the same trace ID as the parent span
+        assert child_span.context.trace_id == parent_span.context.trace_id
+
+        # Verify the child span is a child of the parent span
+        assert child_span.parent.span_id == parent_span.context.span_id

@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import ssl
 import warnings
 from contextlib import AsyncExitStack
 from typing import (
@@ -310,12 +311,18 @@ class PrefectClient:
         httpx_settings.setdefault("headers", {})
 
         if PREFECT_API_TLS_INSECURE_SKIP_VERIFY:
-            httpx_settings.setdefault("verify", False)
+            # Create an unverified context for insecure connections
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            httpx_settings.setdefault("verify", ctx)
         else:
             cert_file = PREFECT_API_SSL_CERT_FILE.value()
             if not cert_file:
                 cert_file = certifi.where()
-            httpx_settings.setdefault("verify", cert_file)
+            # Create a verified context with the certificate file
+            ctx = ssl.create_default_context(cafile=cert_file)
+            httpx_settings.setdefault("verify", ctx)
 
         if api_version is None:
             api_version = SERVER_API_VERSION
@@ -2221,6 +2228,13 @@ class PrefectClient:
         )
         return StateListAdapter.validate_python(response.json())
 
+    async def set_flow_run_name(self, flow_run_id: UUID, name: str):
+        flow_run_data = FlowRunUpdate(name=name)
+        return await self._client.patch(
+            f"/flow_runs/{flow_run_id}",
+            json=flow_run_data.model_dump(mode="json", exclude_unset=True),
+        )
+
     async def set_task_run_name(self, task_run_id: UUID, name: str):
         task_run_data = TaskRunUpdate(name=name)
         return await self._client.patch(
@@ -3538,12 +3552,18 @@ class SyncPrefectClient:
         httpx_settings.setdefault("headers", {})
 
         if PREFECT_API_TLS_INSECURE_SKIP_VERIFY:
-            httpx_settings.setdefault("verify", False)
+            # Create an unverified context for insecure connections
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            httpx_settings.setdefault("verify", ctx)
         else:
             cert_file = PREFECT_API_SSL_CERT_FILE.value()
             if not cert_file:
                 cert_file = certifi.where()
-            httpx_settings.setdefault("verify", cert_file)
+            # Create a verified context with the certificate file
+            ctx = ssl.create_default_context(cafile=cert_file)
+            httpx_settings.setdefault("verify", ctx)
 
         if api_version is None:
             api_version = SERVER_API_VERSION
@@ -4023,7 +4043,7 @@ class SyncPrefectClient:
         return OrchestrationResult.model_validate(response.json())
 
     def set_flow_run_name(self, flow_run_id: UUID, name: str):
-        flow_run_data = TaskRunUpdate(name=name)
+        flow_run_data = FlowRunUpdate(name=name)
         return self._client.patch(
             f"/flow_runs/{flow_run_id}",
             json=flow_run_data.model_dump(mode="json", exclude_unset=True),

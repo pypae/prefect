@@ -25,7 +25,7 @@ export const ConcurrencyTabs = ({
 	const navigate = routeApi.useNavigate();
 
 	return (
-		<Tabs defaultValue="Global" className="w-[400px]" value={tab}>
+		<Tabs defaultValue="Global" value={tab}>
 			<TabsList className="grid w-full grid-cols-2">
 				<TabsTrigger
 					value={TAB_OPTIONS.Global}
